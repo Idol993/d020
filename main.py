@@ -492,6 +492,7 @@ def report(ctx, week_start: Optional[str], week_end: Optional[str]):
               help="结束时间 YYYY-MM-DD [HH:MM:SS]")
 @click.option("--version", type=str, default=None, help="版本号过滤")
 @click.option("--station", type=str, default=None, help="驿站ID过滤")
+@click.option("--release-id", type=str, default=None, help="发布编号过滤(rollback/audit)")
 @click.option("--format", "output_format",
               type=click.Choice(["table", "json", "csv", "excel"]),
               default="table", help="输出格式")
@@ -499,20 +500,25 @@ def report(ctx, week_start: Optional[str], week_end: Optional[str]):
 @click.pass_context
 def list_records(ctx, record_type: str, start_time: Optional[str],
                  end_time: Optional[str], version: Optional[str],
-                 station: Optional[str], output_format: str,
-                 output: Optional[str]):
+                 station: Optional[str], release_id: Optional[str],
+                 output_format: str, output: Optional[str]):
     """查询发布、回滚、演练、审批、审计历史记录"""
     aq = get_audit_query_engine()
 
     if record_type == "release":
-        records = aq.query_release_records(start_time, end_time, station, version)
+        records = aq.query_release_records(
+            start_time, end_time, station, version
+        )
     elif record_type == "rollback":
-        records = aq.query_rollback_records(start_time, end_time, station, version)
+        records = aq.query_rollback_records(
+            start_time, end_time, station, version, release_id
+        )
     elif record_type == "drill":
-        raw = aq.query_drill_records(start_time, end_time)
-        records = [r.to_dict() for r in raw]
+        records = aq.query_drill_records(start_time, end_time)
     elif record_type == "approval":
-        records = aq.query_approval_records(start_time, end_time)
+        records = aq.query_approval_records(
+            start_time, end_time, release_id
+        )
     else:
         alog = get_audit_logger()
         records = alog.query_logs(start_time, end_time)
@@ -532,29 +538,65 @@ def list_records(ctx, record_type: str, start_time: Optional[str],
         click.secho(f"✅ 已导出到: {path}", fg="green")
         return
 
-    click.secho(f"\n{'─'*80}", fg="yellow")
+    click.secho(f"\n{'─'*100}", fg="yellow")
     if record_type == "release":
-        click.secho(f"  {'发布编号':<22} {'版本':<12} {'状态':<14} {'阶段':<6} {'创建时间':<20}",
-                    fg="yellow", bold=True)
-        click.secho(f"{'─'*80}", fg="yellow")
+        click.secho(
+            f"  {'发布编号':<22} {'版本':<12} {'状态':<12} {'类型':<8} "
+            f"{'灰度阶段':<8} {'影响驿站':<8} {'回滚':<4} {'创建时间':<20}",
+            fg="yellow", bold=True
+        )
+        click.secho(f"{'─'*100}", fg="yellow")
         for r in records[:50]:
+            gs = r.get("grayscale_status", "")
+            stage_info = f"{r['current_stage']}/{r['total_stages']}" if r['total_stages'] > 0 else "-"
+            affected = str(r.get("affected_stations", 0)) if r.get("affected_stations", 0) > 0 else "-"
+            rb = str(r.get("rollback_count", 0)) if r.get("rollback_count", 0) > 0 else "0"
             click.echo(
                 f"  {r['release_id']:<22} {r['version']:<12} "
-                f"{r['status']:<14} {r['current_stage']}/{r['total_stages']:<4} "
+                f"{r['status']:<12} {r.get('release_type', '-'):<8} "
+                f"{stage_info:<8} {affected:<8} {rb:<4} "
                 f"{r['created_at']:<20}"
             )
+            if gs and gs != r.get("status", ""):
+                click.echo(
+                    f"  {'':22} {'':12} 灰度={gs}  熔断={r.get('circuit_breaker_state') or '-'}"
+                )
     elif record_type == "rollback":
-        for r in records[:20]:
+        click.secho(
+            f"  {'事件ID':<22} {'发布编号':<22} {'版本':<12} {'类型':<8} "
+            f"{'触发指标':<20} {'影响驿站':<8} {'回滚耗时':<8} {'结果':<6}",
+            fg="yellow", bold=True
+        )
+        click.secho(f"{'─'*100}", fg="yellow")
+        metric_map = {
+            "pickup_failure_rate": "取件失败率",
+            "terminal_offline_rate": "柜机离线率",
+            "mail_abnormal_rate": "寄件异常率",
+            "manual_trigger": "手动触发",
+        }
+        for r in records[:50]:
+            m = metric_map.get(r.get("trigger_metric", ""), r.get("trigger_metric", ""))
+            dur = r.get("rollback_duration_seconds", "N/A")
+            if isinstance(dur, (int, float)):
+                dur_str = f"{dur}s"
+            else:
+                dur_str = str(dur)
+            succ = "✅" if r.get("rollback_successful") else "❌"
             click.echo(
-                f"  [{r['triggered_at']}] {r['release_id']} "
-                f"阶段{r['trigger_stage']} {r['trigger_metric']}={r['trigger_value']} "
-                f"→ {r['rollback_successful']} ({r['rollback_duration_seconds']}s)"
+                f"  {r['event_id']:<22} {r['release_id']:<22} "
+                f"{r.get('version', '-'):<12} {r.get('trigger_type', '-'):<8} "
+                f"{m}={r.get('trigger_value', '-'):<10} "
+                f"{r.get('affected_station_count', 0):<8} {dur_str:<8} {succ:<6}"
+            )
+            click.echo(
+                f"  {'':22} {'':22} 触发@{r.get('triggered_at', '-')}  "
+                f"回滚: {r.get('rollback_started', '-')} → {r.get('rollback_completed', '-')}"
             )
     elif record_type == "drill":
         for r in records[:20]:
             mark = "✅" if r.get("success") else "❌"
             click.echo(
-                f"  [{r.get('started_at', '')[:16]}] {r['drill_id']} "
+                f"  [{r.get('started_at', '')[:16]}] {r.get('drill_id', '')} "
                 f"{mark} {r.get('steps_passed', 0)}/{r.get('steps_total', 6)} "
                 f"回滚{r.get('rollback_duration_seconds', 0)}s"
             )
@@ -563,19 +605,26 @@ def list_records(ctx, record_type: str, start_time: Optional[str],
             passed = "✅" if r.get("overall_passed") else ("❌" if r.get("rejected_by") else "⏳")
             click.echo(
                 f"  [{r['created_at'][:16]}] {r['release_id']} "
-                f"{r['channel_name']:<6} {passed} "
+                f"{r.get('channel_name', ''):<6} {passed} "
                 f"{r.get('status'):<10} {r.get('total_duration_hours', '-')}h"
             )
+            for node in r.get("nodes", []):
+                ns = node.get("status", "pending")
+                nmark = "✅" if ns == "approved" else ("❌" if ns == "rejected" else ("⏭️" if ns == "skipped" else "⏳"))
+                who = node.get("approved_by") or "-"
+                click.echo(f"    {nmark} {node.get('role', ''):<16} {who}")
     else:
         for r in records[:50]:
             click.echo(
-                f"  [{r['timestamp']}] {r['operator']:<12} "
-                f"{r['action']:<28} {r['target_id']:<20} {r['target_type']}"
+                f"  [{r.get('timestamp', '')}] {r.get('operator', ''):<12} "
+                f"{r.get('action', ''):<28} {r.get('target_id', ''):<20} {r.get('target_type', '')}"
             )
 
     if len(records) > 50:
-        click.secho(f"\n... 仅显示前50条，共 {len(records)} 条。使用 --format excel --output 导出完整数据。",
-                    fg="bright_black")
+        click.secho(
+            f"\n... 仅显示前50条，共 {len(records)} 条。使用 --format excel --output 导出完整数据。",
+            fg="bright_black"
+        )
 
 
 @cli.command(short_help="启动常驻后台服务（定时任务）")

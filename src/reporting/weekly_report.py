@@ -3,6 +3,7 @@ import os
 import csv
 import io
 import random
+import time as _time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -40,6 +41,7 @@ class WeeklyReportGenerator:
         self.notifier = get_notifier()
         self.report_cfg = self.config.get("reporting.weekly_report", {})
         self.report_dir = self.config.get_storage_path("report_dir")
+        self.db_dir = self.config.get_storage_path("db_dir")
         self.report_dir.mkdir(parents=True, exist_ok=True)
 
     def generate(self, week_start: Optional[str] = None,
@@ -88,172 +90,323 @@ class WeeklyReportGenerator:
         self._send_report_notification(report)
         return report
 
+    def _load_pipelines(self, week_start: str, week_end: str) -> List[Dict]:
+        results = []
+        pipe_dir = self.db_dir / "pipelines"
+        if not pipe_dir.exists():
+            return results
+        for file in sorted(pipe_dir.glob("REL_*.json")):
+            try:
+                with open(file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                created = data.get("created_at", "")
+                if created:
+                    day = created[:10]
+                    if day < week_start or day > week_end:
+                        continue
+                results.append(data)
+            except Exception:
+                continue
+        return results
+
+    def _load_approvals(self, week_start: str, week_end: str) -> List[Dict]:
+        results = []
+        appr_dir = self.db_dir / "approval"
+        if not appr_dir.exists():
+            return results
+        for file in sorted(appr_dir.glob("REL_*.json")):
+            try:
+                with open(file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                created = data.get("created_at", "")
+                if created:
+                    day = created[:10]
+                    if day < week_start or day > week_end:
+                        continue
+                results.append(data)
+            except Exception:
+                continue
+        return results
+
+    def _load_releases(self, week_start: str, week_end: str) -> List[Dict]:
+        results = []
+        rel_dir = self.db_dir / "release"
+        if not rel_dir.exists():
+            return results
+        for file in sorted(rel_dir.glob("REL_*.json")):
+            try:
+                with open(file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                created = data.get("created_at", "")
+                if created:
+                    day = created[:10]
+                    if day < week_start or day > week_end:
+                        continue
+                results.append(data)
+            except Exception:
+                continue
+        return results
+
+    def _load_drills(self, week_start: str, week_end: str) -> List[Dict]:
+        results = []
+        drill_dir = self.db_dir / "drills"
+        if not drill_dir.exists():
+            return results
+        for file in sorted(drill_dir.glob("DRL_*.json")):
+            try:
+                with open(file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                started = data.get("started_at", "")
+                if started:
+                    day = started[:10]
+                    if day < week_start or day > week_end:
+                        continue
+                results.append(data)
+            except Exception:
+                continue
+        return results
+
+    def _load_prechecks(self, week_start: str, week_end: str) -> List[Dict]:
+        results = []
+        pc_dir = self.db_dir / "precheck"
+        if not pc_dir.exists():
+            return results
+        for file in sorted(pc_dir.glob("REL_*.json")):
+            try:
+                with open(file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                started = data.get("started_at", "")
+                if started:
+                    day = started[:10]
+                    if day < week_start or day > week_end:
+                        continue
+                results.append(data)
+            except Exception:
+                continue
+        return results
+
     def _collect_summary(self, report: WeeklyReport):
-        seed = hash(f"{report.week_start}_{report.week_end}")
-        random.seed(seed)
+        pipelines = self._load_pipelines(report.week_start, report.week_end)
+        prechecks = self._load_prechecks(report.week_start, report.week_end)
+        approvals = self._load_approvals(report.week_start, report.week_end)
+        releases = self._load_releases(report.week_start, report.week_end)
+        drills = self._load_drills(report.week_start, report.week_end)
 
-        total_releases = random.randint(8, 25)
-        hotfix_count = random.randint(1, 5)
-        regular_count = total_releases - hotfix_count
-        success_count = random.randint(int(total_releases * 0.85), total_releases)
-        rollback_count = total_releases - success_count
-        precheck_blocked = random.randint(1, 6)
+        total_submitted = len(pipelines)
+        precheck_blocked = sum(
+            1 for p in pipelines
+            if p.get("status") == ReleaseStatus.PRECHECK_FAILED.value
+        )
+        precheck_passed = total_submitted - precheck_blocked
+        precheck_rate = (
+            f"{round(precheck_passed / total_submitted * 100, 1)}%"
+            if total_submitted > 0 else "N/A"
+        )
 
-        avg_approval_hours = round(random.uniform(2.5, 18.0), 1)
-        hotfix_avg_approval = round(random.uniform(0.3, 2.0), 1)
-        regular_avg_approval = round(random.uniform(12.0, 36.0), 1)
+        regular_count = sum(
+            1 for p in pipelines
+            if p.get("request", {}).get("release_type") == "regular"
+        )
+        hotfix_count = total_submitted - regular_count
+
+        success_count = sum(
+            1 for p in pipelines
+            if p.get("status") == ReleaseStatus.RELEASE_COMPLETED.value
+        )
+        rollback_count = sum(
+            1 for p in pipelines
+            if p.get("status") == ReleaseStatus.ROLLBACK_COMPLETED.value
+        )
+        release_total = success_count + rollback_count
+        success_rate = (
+            f"{round(success_count / release_total * 100, 1)}%"
+            if release_total > 0 else "N/A"
+        )
+        rollback_rate = (
+            f"{round(rollback_count / release_total * 100, 1)}%"
+            if release_total > 0 else "0.0%"
+        )
+
+        approval_durations = []
+        regular_durations = []
+        hotfix_durations = []
+        for a in approvals:
+            dur = a.get("total_duration_hours", 0)
+            if dur and dur > 0:
+                approval_durations.append(dur)
+                if a.get("release_type") == "regular":
+                    regular_durations.append(dur)
+                else:
+                    hotfix_durations.append(dur)
+        avg_approval = round(sum(approval_durations) / len(approval_durations), 1) if approval_durations else 0
+        avg_regular = round(sum(regular_durations) / len(regular_durations), 1) if regular_durations else 0
+        avg_hotfix = round(sum(hotfix_durations) / len(hotfix_durations), 1) if hotfix_durations else 0
 
         report.summary = {
             "周期": f"{report.week_start} ~ {report.week_end}",
-            "发布申请总数": total_releases + precheck_blocked,
-            "通过前置校验并进入审批": total_releases,
+            "发布申请总数": total_submitted,
+            "通过前置校验并进入审批": precheck_passed,
             "前置校验阻断数": precheck_blocked,
-            "前置校验通过率": f"{round(total_releases / (total_releases + precheck_blocked) * 100, 1)}%",
+            "前置校验通过率": precheck_rate,
             "常规发布数": regular_count,
             "紧急Hotfix数": hotfix_count,
             "发布成功数": success_count,
-            "发布成功率": f"{round(success_count / total_releases * 100, 1)}%",
+            "发布成功率": success_rate,
             "触发熔断回滚数": rollback_count,
-            "回滚率": f"{round(rollback_count / total_releases * 100, 1)}%",
-            "平均审批时长(小时)": avg_approval_hours,
-            "常规发布平均审批(小时)": regular_avg_approval,
-            "Hotfix平均审批(小时)": hotfix_avg_approval,
-            "SLA达标率": f"{random.randint(92, 99)}%",
+            "回滚率": rollback_rate,
+            "平均审批时长(小时)": avg_approval,
+            "常规发布平均审批(小时)": avg_regular,
+            "Hotfix平均审批(小时)": avg_hotfix,
+            "演练执行次数": len(drills),
         }
 
     def _collect_releases(self, report: WeeklyReport):
-        seed = hash(f"rel_{report.week_start}")
-        random.seed(seed)
+        pipelines = self._load_pipelines(report.week_start, report.week_end)
+        releases = self._load_releases(report.week_start, report.week_end)
+        release_map = {r.get("release_id"): r for r in releases}
 
-        for i in range(report.summary.get("发布申请总数", 0)):
-            day_offset = random.randint(0, 6)
-            release_day = (datetime.strptime(report.week_start, "%Y-%m-%d") +
-                           timedelta(days=day_offset)).strftime("%Y-%m-%d")
-            types = ["常规迭代", "紧急热修复"]
-            type_weights = [0.75, 0.25]
-            rtype = random.choices(types, type_weights)[0]
+        status_labels = {
+            ReleaseStatus.DRAFT.value: "草稿",
+            ReleaseStatus.PRECHECK_PENDING.value: "校验中",
+            ReleaseStatus.PRECHECK_PASSED.value: "校验通过",
+            ReleaseStatus.PRECHECK_FAILED.value: "🚫 前置校验阻断",
+            ReleaseStatus.APPROVAL_PENDING.value: "审批中",
+            ReleaseStatus.APPROVAL_REJECTED.value: "❌ 审批拒绝",
+            ReleaseStatus.APPROVAL_PASSED.value: "审批通过",
+            ReleaseStatus.GRAYSCALE_IN_PROGRESS.value: "🔵 灰度中",
+            ReleaseStatus.RELEASE_COMPLETED.value: "✅ 发布完成",
+            ReleaseStatus.ROLLBACK_IN_PROGRESS.value: "🔄 回滚中",
+            ReleaseStatus.ROLLBACK_COMPLETED.value: "🔄 已回滚",
+            ReleaseStatus.RELEASE_FAILED.value: "❌ 发布失败",
+            ReleaseStatus.CANCELLED.value: "已取消",
+        }
+        type_labels = {"regular": "常规迭代", "hotfix": "紧急热修复"}
 
-            statuses = [
-                ReleaseStatus.RELEASE_COMPLETED.value,
-                ReleaseStatus.ROLLBACK_COMPLETED.value,
-                ReleaseStatus.PRECHECK_FAILED.value,
-                ReleaseStatus.APPROVAL_REJECTED.value,
-            ]
-            status_weights = [0.65, 0.10, 0.15, 0.10]
-            rstatus = random.choices(statuses, status_weights)[0]
-
-            regions_impacted = random.sample(
-                ["华东", "华南", "华北", "华中", "西南", "东北", "西北"],
-                random.randint(2, 7)
-            )
+        for p in pipelines:
+            req = p.get("request", {})
+            rid = p.get("release_id") or req.get("release_id", "")
+            rel = release_map.get(rid, {})
+            affected = len(rel.get("all_affected_stations", []))
+            events = rel.get("events", [])
+            rollback_cnt = len([e for e in events if e.get("rollback_successful")])
 
             report.releases.append({
-                "发布编号": f"REL_{release_day.replace('-', '')}_{1000 + i}",
-                "版本号": f"v2.{random.randint(4, 9)}.{random.randint(0, 15)}",
-                "标题": random.choice([
-                    "取件码生成算法优化", "柜机心跳机制升级", "寄件计费模块重构",
-                    "PDA扫描解码性能优化", "站点看板报表模块新增", "地址解析引擎升级",
-                    "高并发场景缓存策略调优", "多语言国际化支持",
-                ]),
-                "类型": rtype,
-                "提交人": random.choice(["张三", "李四", "王五", "赵六", "孙七", "周八"]),
-                "提交时间": f"{release_day} {random.randint(9, 20):02d}:{random.randint(0, 59):02d}",
-                "状态": self._status_label(rstatus),
-                "影响区域": ", ".join(regions_impacted),
-                "影响驿站数": random.randint(20, 200),
-                "审批耗时(小时)": round(random.uniform(0.5, 30.0), 1) if rstatus not in [
-                    ReleaseStatus.PRECHECK_FAILED.value] else "-",
-                "熔断回滚": "是" if rstatus == ReleaseStatus.ROLLBACK_COMPLETED.value else "否",
+                "发布编号": rid,
+                "版本号": req.get("version", ""),
+                "标题": req.get("title", ""),
+                "类型": type_labels.get(req.get("release_type", ""), req.get("release_type", "")),
+                "提交人": req.get("submitted_by", ""),
+                "提交时间": p.get("created_at", ""),
+                "状态": status_labels.get(p.get("status", ""), p.get("status", "")),
+                "影响驿站数": affected if affected > 0 else "-",
+                "熔断回滚": "是" if rollback_cnt > 0 else "否",
+                "回滚次数": rollback_cnt if rollback_cnt > 0 else 0,
             })
-
-    def _status_label(self, status: str) -> str:
-        mapping = {
-            ReleaseStatus.RELEASE_COMPLETED.value: "✅ 发布完成",
-            ReleaseStatus.ROLLBACK_COMPLETED.value: "🔄 已回滚",
-            ReleaseStatus.PRECHECK_FAILED.value: "🚫 前置校验阻断",
-            ReleaseStatus.APPROVAL_REJECTED.value: "❌ 审批拒绝",
-            ReleaseStatus.GRAYSCALE_IN_PROGRESS.value: "🔵 灰度中",
-        }
-        return mapping.get(status, status)
 
     def _collect_rollbacks(self, report: WeeklyReport):
-        seed = hash(f"rb_{report.week_start}")
-        random.seed(seed)
+        releases = self._load_releases(report.week_start, report.week_end)
+        metric_map = {
+            "pickup_failure_rate": "取件失败率",
+            "terminal_offline_rate": "柜机离线率",
+            "mail_abnormal_rate": "寄件异常率",
+            "manual_trigger": "手动触发",
+        }
 
-        rollback_releases = [r for r in report.releases if r["熔断回滚"] == "是"]
-        metrics = ["取件失败率", "柜机离线率", "寄件异常率"]
+        for rel in releases:
+            for ev in rel.get("events", []):
+                if not ev.get("rollback_completed"):
+                    continue
+                m = metric_map.get(ev.get("trigger_metric", ""), ev.get("trigger_metric", ""))
+                tv = ev.get("trigger_value", 0)
+                th = ev.get("threshold", 0)
+                report.rollbacks.append({
+                    "发布编号": rel.get("release_id", ""),
+                    "版本号": rel.get("version", ""),
+                    "触发阶段": f"第 {ev.get('trigger_stage', '-')} 阶段",
+                    "触发指标": m,
+                    "指标值": f"{tv:.2%}" if isinstance(tv, (int, float)) else str(tv),
+                    "阈值": f"{th:.2%}" if isinstance(th, (int, float)) else str(th),
+                    "影响驿站数": len(ev.get("affected_stations", [])),
+                    "回滚开始时间": ev.get("rollback_started", ""),
+                    "回滚完成时间": ev.get("rollback_completed", ""),
+                    "回滚耗时(秒)": ev.get("rollback_duration_seconds", 0),
+                    "回滚结果": "✅ 成功" if ev.get("rollback_successful") else "⚠️ 部分完成",
+                })
 
-        for i, r in enumerate(rollback_releases):
-            report.rollbacks.append({
-                "发布编号": r["发布编号"],
-                "版本号": r["版本号"],
-                "触发阶段": f"第 {random.randint(1, 3)} 阶段",
-                "触发指标": random.choice(metrics),
-                "指标值": f"{round(random.uniform(0.04, 0.12) * 100, 1)}%",
-                "阈值": f"{round(random.uniform(0.02, 0.05) * 100, 1)}%",
-                "影响驿站数": random.randint(10, 80),
-                "回滚开始时间": r["提交时间"],
-                "回滚完成时间": (
-                    datetime.strptime(r["提交时间"], "%Y-%m-%d %H:%M") +
-                    timedelta(seconds=random.randint(45, 240))
-                ).strftime("%Y-%m-%d %H:%M:%S"),
-                "回滚耗时(秒)": random.randint(45, 240),
-                "回滚结果": random.choices(["✅ 成功", "⚠️ 部分完成"], [0.9, 0.1])[0],
-                "根因分析": random.choice([
-                    "升级后取件码解码兼容性问题，PDA老版本固件无法识别新格式",
-                    "柜机心跳包协议变更导致部分区域IoT网关连接异常",
-                    "寄件计费模块边界条件处理不当，高峰时段出现异常",
-                    "缓存穿透导致DB压力剧增，响应超时引发业务失败率上升",
-                ]),
-            })
+        pipelines = self._load_pipelines(report.week_start, report.week_end)
+        release_ids_with_events = {r.get("release_id") for r in releases}
+        for p in pipelines:
+            rid = p.get("release_id") or p.get("request", {}).get("release_id", "")
+            if rid in release_ids_with_events:
+                continue
+            if p.get("status") in [
+                ReleaseStatus.ROLLBACK_COMPLETED.value,
+                ReleaseStatus.ROLLBACK_IN_PROGRESS.value,
+            ]:
+                report.rollbacks.append({
+                    "发布编号": rid,
+                    "版本号": p.get("request", {}).get("version", ""),
+                    "触发阶段": "-",
+                    "触发指标": "手动触发",
+                    "指标值": "-",
+                    "阈值": "-",
+                    "影响驿站数": "-",
+                    "回滚开始时间": "-",
+                    "回滚完成时间": "-",
+                    "回滚耗时(秒)": "-",
+                    "回滚结果": "手动回滚",
+                })
 
     def _collect_approvals(self, report: WeeklyReport):
-        seed = hash(f"appr_{report.week_start}")
-        random.seed(seed)
+        approvals = self._load_approvals(report.week_start, report.week_end)
 
-        passed_release = [r for r in report.releases if r["状态"] not in [
-            "🚫 前置校验阻断", "❌ 审批拒绝"
-        ]]
+        total_nodes = 0
+        ops_pass = ops_total = 0
+        station_pass = station_total = 0
+        tech_pass = tech_total = 0
+        hotfix_parallel = 0
+
+        for a in approvals:
+            nodes = a.get("nodes", [])
+            total_nodes += len(nodes)
+            if a.get("release_type") == "hotfix":
+                hotfix_parallel += 1
+            for n in nodes:
+                role = n.get("role", "")
+                st = n.get("status", "")
+                passed = st in ["approved", "skipped"]
+                if role == "operations":
+                    ops_total += 1
+                    if passed:
+                        ops_pass += 1
+                elif role == "station_manager":
+                    station_total += 1
+                    if passed:
+                        station_pass += 1
+                elif role == "tech":
+                    tech_total += 1
+                    if passed:
+                        tech_pass += 1
 
         report.approvals = {
-            "审批节点总数": len(passed_release) * 3,
-            "运营审批通过率": f"{random.randint(95, 99)}%",
-            "驿站负责人审批通过率": f"{random.randint(90, 98)}%",
-            "技术审批通过率": f"{random.randint(92, 99)}%",
-            "平均审批时长分布": {
-                "运营": f"{round(random.uniform(1.0, 8.0), 1)} 小时",
-                "驿站负责人": f"{round(random.uniform(0.5, 6.0), 1)} 小时",
-                "技术": f"{round(random.uniform(2.0, 12.0), 1)} 小时",
-            },
-            "审批超时提醒次数": random.randint(2, 12),
-            "紧急Hotfix并行审批次数": sum(
-                1 for r in report.releases if r["类型"] == "紧急热修复"
-            ),
-            "事后补签次数": random.randint(0, 3),
+            "审批节点总数": total_nodes,
+            "运营审批通过率": f"{round(ops_pass / ops_total * 100, 1)}%" if ops_total > 0 else "N/A",
+            "驿站负责人审批通过率": f"{round(station_pass / station_total * 100, 1)}%" if station_total > 0 else "N/A",
+            "技术审批通过率": f"{round(tech_pass / tech_total * 100, 1)}%" if tech_total > 0 else "N/A",
+            "紧急Hotfix并行审批次数": hotfix_parallel,
         }
 
     def _collect_drills(self, report: WeeklyReport):
-        seed = hash(f"drill_{report.week_start}")
-        random.seed(seed)
-
-        drill_day = (datetime.strptime(report.week_start, "%Y-%m-%d") +
-                     timedelta(days=random.randint(0, 6))).strftime("%Y-%m-%d")
-
-        if random.random() < 0.35:
+        drills = self._load_drills(report.week_start, report.week_end)
+        for d in drills:
             report.drills.append({
-                "演练ID": f"DRL_{drill_day.replace('-', '')}_{random.randint(100, 999)}",
-                "演练时间": f"{drill_day} 02:00",
-                "触发指标": random.choice(["取件失败率", "柜机离线率"]),
-                "熔断触发": "是",
-                "自动回滚": "是",
-                "回滚耗时(秒)": random.randint(50, 180),
-                "步骤通过率": f"{random.randint(4, 6)}/6",
-                "演练结果": random.choice(["✅ 成功", "⚠️ 部分成功"]),
-                "演练结论": random.choice([
-                    "熔断与回滚机制工作正常，符合预期",
-                    "整体流程可用，但步骤4验证环节延迟略高",
-                    "演练成功，需关注低峰时段服务启动时间",
-                ]),
+                "演练ID": d.get("drill_id", ""),
+                "演练时间": d.get("started_at", ""),
+                "熔断触发": "是" if d.get("circuit_breaker_triggered") else "否",
+                "自动回滚": "是" if d.get("rollback_executed") else "否",
+                "回滚耗时(秒)": d.get("rollback_duration_seconds", 0),
+                "步骤通过率": f"{d.get('steps_passed', 0)}/{d.get('steps_total', 0)}",
+                "演练结果": "✅ 成功" if d.get("success") else "⚠️ 未完全成功",
             })
 
     def _compute_trends(self, report: WeeklyReport):
@@ -293,27 +446,38 @@ class WeeklyReportGenerator:
         recommendations = []
         summary = report.summary
 
-        if float(summary["回滚率"].strip("%")) > 10.0:
+        rb_rate_str = summary.get("回滚率", "0.0%")
+        try:
+            rb_rate = float(rb_rate_str.strip("%"))
+        except (ValueError, AttributeError):
+            rb_rate = 0.0
+        if rb_rate > 10.0:
             recommendations.append(
-                f"⚠️ 本周回滚率为 {summary['回滚率']}，高于警戒线 10%。建议加强："
+                f"⚠️ 本周回滚率为 {rb_rate_str}，高于警戒线 10%。建议加强："
                 "1) 代码Review覆盖度；2) 集成测试完整性；3) 预发布环境验证深度。"
             )
 
-        if float(summary["前置校验通过率"].strip("%")) < 90.0:
+        pc_rate_str = summary.get("前置校验通过率", "100%")
+        try:
+            pc_rate = float(pc_rate_str.strip("%"))
+        except (ValueError, AttributeError):
+            pc_rate = 100.0
+        if pc_rate < 90.0:
             recommendations.append(
-                f"⚠️ 前置校验通过率 {summary['前置校验通过率']} 偏低，"
+                f"⚠️ 前置校验通过率 {pc_rate_str} 偏低，"
                 "建议开发团队关注阻断项修复建议，减少重复提交消耗。"
             )
 
-        if summary["紧急Hotfix数"] >= 4:
+        if summary.get("紧急Hotfix数", 0) >= 4:
             recommendations.append(
                 f"⚠️ 本周Hotfix数达 {summary['紧急Hotfix数']} 次，"
                 "建议评审常规发布节奏，合并小版本迭代，降低发布频次风险。"
             )
 
-        if summary["平均审批时长(小时)"] > 12.0:
+        avg_appr = summary.get("平均审批时长(小时)", 0)
+        if isinstance(avg_appr, (int, float)) and avg_appr > 12.0:
             recommendations.append(
-                f"⚠️ 平均审批时长 {summary['平均审批时长(小时)']}h 偏长，"
+                f"⚠️ 平均审批时长 {avg_appr}h 偏长，"
                 "建议优化审批SLA提醒机制，或考虑引入备用审批人制度。"
             )
 

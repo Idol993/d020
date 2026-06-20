@@ -689,7 +689,12 @@ class GrayscaleReleaseEngine:
         with self._lock:
             session = self._sessions.get(release_id)
         if not session:
+            session = self.get_session(release_id)
+        if not session:
             raise ValueError(f"未找到灰度会话: {release_id}")
+
+        with self._lock:
+            self._sessions[release_id] = session
 
         if release_id in self._monitor_stop_flags:
             self._monitor_stop_flags[release_id].set()
