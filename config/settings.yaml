@@ -1,0 +1,207 @@
+system:
+  name: "末端驿站/自提柜管理系统发布平台"
+  version: "1.0.0"
+  environment: "production"
+  timezone: "Asia/Shanghai"
+  log_level: "INFO"
+  audit_enabled: true
+
+storage:
+  base_dir: "./storage"
+  audit_log_dir: "./storage/audit_logs"
+  report_dir: "./storage/reports"
+  db_dir: "./storage/db"
+  temp_dir: "./storage/temp"
+
+precheck:
+  enabled: true
+  timeout_seconds: 300
+  parallel_check: true
+  mail_success_rate:
+    enabled: true
+    threshold: 0.98
+    sample_size: 1000
+    regression_window_days: 7
+  pickup_code_accuracy:
+    enabled: true
+    threshold: 0.995
+    sample_size: 5000
+  terminal_online_rate:
+    enabled: true
+    threshold: 0.95
+    offline_tolerance_minutes: 30
+  system_connectivity:
+    enabled: true
+    pda_threshold: 0.98
+    pc_threshold: 0.99
+    connectivity_timeout_seconds: 10
+
+approval:
+  enabled: true
+  channels:
+    regular:
+      name: "常规迭代"
+      timeout_hours: 72
+      reminder_interval_hours: 8
+      flow:
+        - role: "operations"
+          name: "运营审批"
+          description: "业务影响与用户体验评估"
+          required: true
+          approvers: ["ops_manager@company.com", "ops_director@company.com"]
+        - role: "station_manager"
+          name: "驿站负责人审批"
+          description: "网点运营与客诉风险评估"
+          required: true
+          approvers: ["station_head@company.com", "regional_ops@company.com"]
+        - role: "tech"
+          name: "技术审批"
+          description: "架构与代码评估"
+          required: true
+          approvers: ["tech_lead@company.com", "architect@company.com"]
+    hotfix:
+      name: "紧急热修复"
+      timeout_hours: 4
+      reminder_interval_minutes: 30
+      parallel_approval: true
+      allow_post_sign: true
+      require_reason: true
+      flow:
+        - role: "operations"
+          name: "运营审批(紧急)"
+          description: "紧急发布业务影响快速评估"
+          required: true
+          approvers: ["ops_manager@company.com", "oncall@company.com"]
+        - role: "station_manager"
+          name: "驿站负责人审批(紧急)"
+          description: "紧急发布客诉风险快速评估"
+          required: true
+          approvers: ["station_head@company.com", "oncall@company.com"]
+        - role: "tech"
+          name: "技术审批(紧急)"
+          description: "紧急发布架构与代码快速评估"
+          required: true
+          approvers: ["tech_lead@company.com", "oncall@company.com"]
+
+release:
+  grayscale:
+    enabled: true
+    default_stages:
+      - stage: 1
+        name: "偏远低流量驿站"
+        station_types: ["remote_low_volume", "rural"]
+        region_priority: ["northwest", "southwest", "northeast"]
+        scale_percent: 10
+        observation_minutes: 30
+      - stage: 2
+        name: "社区普通驿站"
+        station_types: ["community_normal", "residential"]
+        region_priority: ["central", "east", "south"]
+        scale_percent: 40
+        observation_minutes: 60
+      - stage: 3
+        name: "核心商圈与高校驿站"
+        station_types: ["commercial_core", "university", "transport_hub"]
+        region_priority: ["east_first_tier", "south_first_tier", "north_first_tier"]
+        scale_percent: 50
+        observation_minutes: 120
+  monitoring:
+    enabled: true
+    interval_seconds: 300
+    metrics:
+      pickup_failure_rate:
+        threshold: 0.03
+        critical_threshold: 0.05
+        window_minutes: 15
+      terminal_offline_rate:
+        threshold: 0.08
+        critical_threshold: 0.15
+        window_minutes: 15
+      mail_abnormal_rate:
+        threshold: 0.04
+        critical_threshold: 0.07
+        window_minutes: 15
+  circuit_breaker:
+    enabled: true
+    auto_rollback: true
+    cooldown_minutes: 60
+    max_retries_per_version: 2
+    rollback_timeout_seconds: 300
+    restart_services_on_rollback: true
+    notify_on_trigger: true
+
+drill:
+  enabled: true
+  schedule:
+    frequency: "monthly"
+    day_of_month: 15
+    hour: 2
+    minute: 0
+    timezone: "Asia/Shanghai"
+  auto_execute: true
+  verify_timeout_seconds: 600
+  archive_results: true
+  alert_on_failure: true
+
+reporting:
+  weekly_report:
+    enabled: true
+    schedule_day: "monday"
+    schedule_hour: 9
+    schedule_minute: 0
+    formats: ["pdf", "excel"]
+    include_trend_charts: true
+    retention_days: 365
+  audit:
+    enabled: true
+    immutable_logs: true
+    hash_algorithm: "sha256"
+    search_dimensions: ["time", "station", "version", "operator", "release_type"]
+    export_formats: ["csv", "excel", "json"]
+
+notification:
+  enabled: true
+  channels:
+    wechat_work:
+      enabled: false
+      webhook_url: ""
+      mentioned_mobile_list: []
+    dingtalk:
+      enabled: false
+      webhook_url: ""
+      secret: ""
+      at_mobiles: []
+    email:
+      enabled: true
+      smtp_server: "smtp.company.com"
+      smtp_port: 587
+      smtp_user: "release-platform@company.com"
+      smtp_password: ""
+      use_tls: true
+      default_receivers: ["tech_team@company.com", "ops_team@company.com"]
+      default_cc: ["management@company.com"]
+  templates:
+    precheck_failed:
+      subject: "[发布平台] 前置校验失败 - 发布已阻断"
+      priority: "high"
+    approval_pending:
+      subject: "[发布平台] 待审批通知 - {release_title}"
+      priority: "normal"
+    approval_completed:
+      subject: "[发布平台] 审批通过 - {release_title}"
+      priority: "normal"
+    grayscale_started:
+      subject: "[发布平台] 灰度发布开始 - {release_title}"
+      priority: "normal"
+    circuit_breaker_triggered:
+      subject: "[发布平台] **紧急** 熔断已触发 - 正在自动回滚"
+      priority: "urgent"
+    rollback_completed:
+      subject: "[发布平台] **紧急** 自动回滚完成报告"
+      priority: "urgent"
+    weekly_report:
+      subject: "[发布平台] 每周发布运营报告 - {week_range}"
+      priority: "normal"
+    drill_completed:
+      subject: "[发布平台] 回滚演练完成 - {drill_id}"
+      priority: "normal"

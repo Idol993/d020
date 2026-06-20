@@ -1,0 +1,232 @@
+{
+  "release_id": "REL_20260621051256_583",
+  "version": "v2.8.0",
+  "started_at": "2026-06-21 05:12:57",
+  "completed_at": "2026-06-21 05:12:57",
+  "total_duration_seconds": 0.0,
+  "total_checks": 4,
+  "passed_checks": 2,
+  "failed_checks": 2,
+  "overall_passed": false,
+  "results": [
+    {
+      "check_name": "terminal_online_rate",
+      "passed": true,
+      "score": 0.9713,
+      "threshold": 0.95,
+      "message": "柜机终端在线率 97.13% ≥ 阈值 95.00%，校验通过",
+      "details": {
+        "total_terminals": 500,
+        "online_count": 485,
+        "offline_count": 15,
+        "offline_tolerance_minutes": 30,
+        "offline_terminal_samples": [
+          {
+            "terminal_id": "T10000",
+            "station_name": "西南社区店1号店",
+            "region": "华北",
+            "offline_duration_minutes": 38,
+            "last_heartbeat": "09:38"
+          },
+          {
+            "terminal_id": "T10001",
+            "station_name": "华北示范店2号店",
+            "region": "华北",
+            "offline_duration_minutes": 373,
+            "last_heartbeat": "00:18"
+          },
+          {
+            "terminal_id": "T10002",
+            "station_name": "东北商圈店3号店",
+            "region": "东北",
+            "offline_duration_minutes": 219,
+            "last_heartbeat": "14:16"
+          },
+          {
+            "terminal_id": "T10003",
+            "station_name": "华北商圈店4号店",
+            "region": "西北",
+            "offline_duration_minutes": 163,
+            "last_heartbeat": "14:43"
+          },
+          {
+            "terminal_id": "T10004",
+            "station_name": "西南示范店5号店",
+            "region": "西南",
+            "offline_duration_minutes": 423,
+            "last_heartbeat": "19:58"
+          },
+          {
+            "terminal_id": "T10005",
+            "station_name": "华北社区店6号店",
+            "region": "华南",
+            "offline_duration_minutes": 400,
+            "last_heartbeat": "19:24"
+          },
+          {
+            "terminal_id": "T10006",
+            "station_name": "华中示范店7号店",
+            "region": "华中",
+            "offline_duration_minutes": 24,
+            "last_heartbeat": "01:15"
+          },
+          {
+            "terminal_id": "T10007",
+            "station_name": "华北商圈店8号店",
+            "region": "华中",
+            "offline_duration_minutes": 12,
+            "last_heartbeat": "10:44"
+          },
+          {
+            "terminal_id": "T10008",
+            "station_name": "华中商圈店9号店",
+            "region": "华南",
+            "offline_duration_minutes": 8,
+            "last_heartbeat": "03:05"
+          },
+          {
+            "terminal_id": "T10009",
+            "station_name": "东北社区店10号店",
+            "region": "西北",
+            "offline_duration_minutes": 239,
+            "last_heartbeat": "05:10"
+          }
+        ],
+        "regional_distribution": {
+          "华东": {
+            "online": 245,
+            "offline": 8,
+            "rate": 0.968
+          },
+          "华南": {
+            "online": 180,
+            "offline": 6,
+            "rate": 0.968
+          },
+          "华北": {
+            "online": 156,
+            "offline": 10,
+            "rate": 0.94
+          },
+          "西南": {
+            "online": 89,
+            "offline": 5,
+            "rate": 0.947
+          },
+          "华中": {
+            "online": 67,
+            "offline": 3,
+            "rate": 0.957
+          },
+          "东北": {
+            "online": 45,
+            "offline": 4,
+            "rate": 0.918
+          },
+          "西北": {
+            "online": 38,
+            "offline": 3,
+            "rate": 0.927
+          }
+        }
+      },
+      "suggestion": "",
+      "checked_at": "2026-06-21 05:12:57",
+      "duration_seconds": 0.0
+    },
+    {
+      "check_name": "pickup_code_accuracy",
+      "passed": false,
+      "score": 0.9903,
+      "threshold": 0.995,
+      "message": "取件码综合准确率 99.03% < 阈值 99.50%，校验不通过",
+      "details": {
+        "sample_size": 5000,
+        "overall_accuracy": 0.9903,
+        "generate_success_rate": 0.9921,
+        "parse_success_rate": 0.9885,
+        "code_types_tested": [
+          "6位数字",
+          "8位字母数字混合",
+          "二维码内容"
+        ],
+        "generate_pass": 4960,
+        "generate_fail": 40,
+        "parse_pass": 4942,
+        "parse_fail": 58
+      },
+      "suggestion": "1. 核查取件码生成算法变更（编码规则、校验位、加密逻辑）\n2. 验证PDA/柜机端解析逻辑是否与服务端同步升级\n3. 覆盖边界场景测试：超长编码、特殊字符、过期码复用\n4. 检查二维码/条形码渲染组件版本兼容性",
+      "checked_at": "2026-06-21 05:12:57",
+      "duration_seconds": 0.0
+    },
+    {
+      "check_name": "mail_success_rate",
+      "passed": true,
+      "score": 0.9916,
+      "threshold": 0.98,
+      "message": "寄件成功率 99.16% ≥ 阈值 98.00%，校验通过",
+      "details": {
+        "sample_size": 1000,
+        "regression_window_days": 7,
+        "success_count": 991,
+        "failure_count": 9,
+        "target_version": "v2.8.0",
+        "baseline_version": "v2.7.5"
+      },
+      "suggestion": "",
+      "checked_at": "2026-06-21 05:12:57",
+      "duration_seconds": 0.0
+    },
+    {
+      "check_name": "system_connectivity",
+      "passed": false,
+      "score": 0.9863999999999999,
+      "threshold": 0.98,
+      "message": "系统连通性校验不通过: PC(98.98%%<99.00%)",
+      "details": {
+        "pda_connectivity_rate": 0.983,
+        "pda_threshold": 0.98,
+        "pc_connectivity_rate": 0.9898,
+        "pc_threshold": 0.99,
+        "pda_test_details": {
+          "test_endpoints": [
+            "/api/v1/pda/auth",
+            "/api/v1/pda/pickup/list",
+            "/api/v1/pda/mail/inbound",
+            "/ws/pda/push"
+          ],
+          "avg_latency_ms": 252,
+          "p99_latency_ms": 1337,
+          "timeout_count": 1,
+          "total_test_requests": 100
+        },
+        "pc_test_details": {
+          "test_endpoints": [
+            "/api/v1/station/auth",
+            "/api/v1/station/dashboard",
+            "/static/js/app.js",
+            "/api/v1/station/report"
+          ],
+          "avg_latency_ms": 130,
+          "p99_latency_ms": 624,
+          "timeout_count": 1,
+          "total_test_requests": 100,
+          "browser_coverage": [
+            "Chrome >= 100",
+            "Edge >= 100",
+            "Firefox ESR"
+          ]
+        },
+        "connectivity_timeout_seconds": 10
+      },
+      "suggestion": "1. 检查连通率不足的组件：PC(98.98%%<99.00%)\n2. PDA：检查VPN/4G网络、APP版本兼容性、WebSocket连接稳定性\n3. PC：检查浏览器版本、前端静态资源CDN可用性、API网关响应\n4. 对失败率较高的区域执行手动拨测验证",
+      "checked_at": "2026-06-21 05:12:57",
+      "duration_seconds": 0.0
+    }
+  ],
+  "blocking_issues": [
+    "[pickup_code_accuracy] 取件码综合准确率 99.03% < 阈值 99.50%，校验不通过",
+    "[system_connectivity] 系统连通性校验不通过: PC(98.98%%<99.00%)"
+  ],
+  "aggregated_suggestion": "【pickup_code_accuracy】\n1. 核查取件码生成算法变更（编码规则、校验位、加密逻辑）\n2. 验证PDA/柜机端解析逻辑是否与服务端同步升级\n3. 覆盖边界场景测试：超长编码、特殊字符、过期码复用\n4. 检查二维码/条形码渲染组件版本兼容性\n\n【system_connectivity】\n1. 检查连通率不足的组件：PC(98.98%%<99.00%)\n2. PDA：检查VPN/4G网络、APP版本兼容性、WebSocket连接稳定性\n3. PC：检查浏览器版本、前端静态资源CDN可用性、API网关响应\n4. 对失败率较高的区域执行手动拨测验证"
+}

@@ -1,0 +1,40 @@
+{
+  "release_id": "REL_20260621051425_273",
+  "request": {
+    "release_id": "REL_20260621051425_273",
+    "version": "v2.9.0-experimental",
+    "title": "[高风险] 取件码加密算法全面升级",
+    "description": "\n        取件码算法从SHA1切换为国密SM4，涉及服务端+PDA+柜机三端同步升级。\n        若有一端升级不同步将导致大面积取件失败。\n        ",
+    "release_type": "hotfix",
+    "submitted_by": "senior_dev@company.com",
+    "submitted_at": "2026-06-21 05:14:25",
+    "package_url": "https://artifacts.company.com/hotfix/v2.9.0-exp.tar.gz",
+    "target_stations": [],
+    "changelog": "",
+    "hotfix_reason": "安全合规紧急要求，月底前需完成算法切换",
+    "rollback_version": "v2.8.0",
+    "additional_info": {}
+  },
+  "status": "precheck_failed",
+  "current_step": "precheck_failed",
+  "step_history": [
+    {
+      "timestamp": "2026-06-21 05:14:25",
+      "action": "SUBMIT",
+      "detail": "发布申请提交: [高风险] 取件码加密算法全面升级"
+    },
+    {
+      "timestamp": "2026-06-21 05:14:25",
+      "action": "PRECHECK_START",
+      "detail": "启动前置校验"
+    },
+    {
+      "timestamp": "2026-06-21 05:14:25",
+      "action": "PRECHECK_FAIL",
+      "detail": "前置校验失败 (1/3项阻断): [system_connectivity] 系统连通性校验不通过: PDA(97.62%<98.00%)"
+    }
+  ],
+  "created_at": "2026-06-21 05:14:25",
+  "updated_at": "2026-06-21 05:14:25",
+  "error_message": "1项校验未通过"
+}
