@@ -411,11 +411,11 @@ class AuditQueryEngine:
                format: str = "excel") -> str:
         output = Path(output_path)
         output.parent.mkdir(parents=True, exist_ok=True)
+        keys = list(records[0].keys()) if records else []
 
         if format == "csv":
-            if records:
-                keys = list(records[0].keys())
-                with open(output, "w", encoding="utf-8-sig", newline="") as f:
+            with open(output, "w", encoding="utf-8-sig", newline="") as f:
+                if keys:
                     writer = csv.DictWriter(f, fieldnames=keys, extrasaction="ignore")
                     writer.writeheader()
                     for r in records:
@@ -426,17 +426,18 @@ class AuditQueryEngine:
                             else:
                                 flat[k] = v
                         writer.writerow(flat)
+                else:
+                    f.write("")
         elif format == "json":
             with open(output, "w", encoding="utf-8") as f:
                 json.dump(records, f, ensure_ascii=False, indent=2, default=str)
         elif format == "excel":
             try:
                 from openpyxl import Workbook
-                from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+                from openpyxl.styles import Font, PatternFill, Alignment
                 wb = Workbook()
                 ws = wb.active
-                if records:
-                    keys = list(records[0].keys())
+                if records and keys:
                     ws.append(keys)
                     hf = Font(bold=True, color="FFFFFF")
                     hfill = PatternFill("solid", fgColor="1976D2")

@@ -17,3 +17,4 @@ venv/
 .venv/
 *.egg-info/
 .github/
+storage/

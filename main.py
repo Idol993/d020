@@ -13,69 +13,130 @@ from typing import Optional
 import click
 
 
+def _handle_init_error(module_name: str, exc: Exception, exit_code: int = 2):
+    click.secho(f"\n{'─'*60}", fg="red")
+    click.secho("  模块初始化失败", fg="red", bold=True)
+    click.secho(f"{'─'*60}", fg="red")
+    click.echo(f"  模块:     {module_name}")
+    click.echo(f"  错误:     {exc}")
+    click.echo(f"  错误类型: {type(exc).__name__}")
+    click.secho(
+        f"\n  ⚠️ 请检查: 配置文件(config/settings.yaml)是否存在、"
+        f"storage目录是否有写权限、依赖包是否安装完整",
+        fg="yellow"
+    )
+    click.secho(f"     运行 pip install -r requirements.txt 安装依赖", fg="yellow")
+    sys.exit(exit_code)
+
+
 def _lazy_orchestrator():
-    from src.orchestrator import get_orchestrator
-    return get_orchestrator()
+    try:
+        from src.orchestrator import get_orchestrator
+        return get_orchestrator()
+    except Exception as e:
+        _handle_init_error("发布编排引擎", e)
 
 
 def _lazy_precheck():
-    from src.precheck.engine import get_precheck_engine
-    return get_precheck_engine()
+    try:
+        from src.precheck.engine import get_precheck_engine
+        return get_precheck_engine()
+    except Exception as e:
+        _handle_init_error("前置校验引擎", e)
 
 
 def _lazy_approval():
-    from src.approval.engine import get_approval_engine
-    return get_approval_engine()
+    try:
+        from src.approval.engine import get_approval_engine
+        return get_approval_engine()
+    except Exception as e:
+        _handle_init_error("审批引擎", e)
 
 
 def _lazy_grayscale():
-    from src.release.grayscale import get_grayscale_engine
-    return get_grayscale_engine()
+    try:
+        from src.release.grayscale import get_grayscale_engine
+        return get_grayscale_engine()
+    except Exception as e:
+        _handle_init_error("灰度发布引擎", e)
 
 
 def _lazy_drill():
-    from src.reporting.drill import get_drill_manager
-    return get_drill_manager()
+    try:
+        from src.reporting.drill import get_drill_manager
+        return get_drill_manager()
+    except Exception as e:
+        _handle_init_error("演练引擎", e)
 
 
 def _lazy_weekly():
-    from src.reporting.weekly_report import get_weekly_report_generator
-    return get_weekly_report_generator()
+    try:
+        from src.reporting.weekly_report import get_weekly_report_generator
+        return get_weekly_report_generator()
+    except Exception as e:
+        _handle_init_error("周报生成器", e)
 
 
 def _lazy_audit_query():
-    from src.reporting.audit_query import get_audit_query_engine
-    return get_audit_query_engine()
+    try:
+        from src.reporting.audit_query import get_audit_query_engine
+        return get_audit_query_engine()
+    except Exception as e:
+        _handle_init_error("审计查询引擎", e)
 
 
 def _lazy_config():
-    from src.core.config import get_config
-    return get_config()
+    try:
+        from src.core.config import get_config
+        return get_config()
+    except Exception as e:
+        _handle_init_error("配置模块", e)
 
 
 def _lazy_audit_logger():
-    from src.core.logger import get_audit_logger
-    return get_audit_logger()
+    try:
+        from src.core.logger import get_audit_logger
+        return get_audit_logger()
+    except Exception as e:
+        _handle_init_error("审计日志", e)
 
 
 def _lazy_models():
-    from src.core.config import ReleaseRequest, ReleaseType, ReleaseStatus
-    return ReleaseRequest, ReleaseType, ReleaseStatus
+    try:
+        from src.core.config import ReleaseRequest, ReleaseType, ReleaseStatus
+        return ReleaseRequest, ReleaseType, ReleaseStatus
+    except Exception as e:
+        _handle_init_error("数据模型", e)
 
 
 def _lazy_logger():
-    from src.core.logger import get_logger
-    return get_logger("cli")
+    try:
+        from src.core.logger import get_logger
+        return get_logger("cli")
+    except Exception as e:
+        _handle_init_error("日志模块", e)
 
 
 def _lazy_cst_now():
-    from src.core.logger import get_cst_now_str
-    return get_cst_now_str()
+    try:
+        from src.core.logger import get_cst_now_str
+        return get_cst_now_str()
+    except Exception:
+        from datetime import datetime, timezone, timedelta
+        return datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _lazy_generate_id():
-    from src.core.logger import generate_id
-    return generate_id
+    try:
+        from src.core.logger import generate_id
+        return generate_id
+    except Exception:
+        from datetime import datetime, timezone, timedelta
+        import uuid
+        def _fallback_id(prefix: str = "GEN"):
+            ts = datetime.now(timezone(timedelta(hours=8))).strftime("%Y%m%d%H%M%S")
+            return f"{prefix}_{ts}_{uuid.uuid4().hex[:3]}"
+        return _fallback_id
 
 
 def _print_banner():
@@ -592,6 +653,9 @@ def list_records(ctx, record_type: str, start_time: Optional[str],
 
     if not records:
         click.secho("⚠️ 未查询到匹配的记录", fg="yellow")
+        if output_format in ["csv", "excel", "json"] and output:
+            path = aq.export(records, output, output_format)
+            click.secho(f"✅ 空结果已导出到: {path}", fg="green")
         return
 
     click.secho(f"\n查询到 {len(records)} 条记录", fg="green")
