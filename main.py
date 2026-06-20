@@ -384,7 +384,10 @@ def rollback(ctx, release_id: str, reason: str, operator: str):
             click.secho(f"{'─'*60}", fg="yellow")
             click.echo(f"  事件ID:     {ev.event_id}")
             click.echo(f"  触发阶段:   第 {ev.trigger_stage} 阶段")
-            click.echo(f"  触发指标:   {m} = {ev.trigger_value:.2%} (阈值 {ev.threshold:.2%})")
+            if ev.trigger_metric == "manual_trigger":
+                click.echo(f"  触发指标:   {m} (回滚原因: {reason})")
+            else:
+                click.echo(f"  触发指标:   {m} = {ev.trigger_value:.2%} (阈值 {ev.threshold:.2%})")
             click.echo(f"  触发时间:   {ev.triggered_at}")
             click.echo(f"  影响驿站:   {len(ev.affected_stations)} 个")
             click.echo(f"  回滚开始:   {ev.rollback_started or '-'}")
@@ -393,12 +396,22 @@ def rollback(ctx, release_id: str, reason: str, operator: str):
             if ev.rollback_successful:
                 click.secho(f"  回滚结果:   ✅ 成功", fg="green", bold=True)
             else:
-                click.secho(f"  回滚结果:   ⚠️ 需人工介入", fg="yellow", bold=True)
+                click.secho(f"  回滚结果:   ❌ 失败", fg="red", bold=True)
+                fr = getattr(ev, 'failure_reason', None) or pipeline.error_message or '未知原因'
+                click.secho(f"  失败原因:   {fr}", fg="red")
             click.echo(f"  版本:       {session.version} → {session.rollback_version}")
         else:
             click.secho("\n✅ 回滚流程已执行", fg="green")
     except Exception as e:
-        click.secho(f"❌ 回滚操作异常: {e}", fg="red")
+        click.secho(f"\n{'─'*60}", fg="red")
+        click.secho("  回滚事件报告", fg="red", bold=True)
+        click.secho(f"{'─'*60}", fg="red")
+        click.echo(f"  发布编号:   {release_id}")
+        click.echo(f"  回滚原因:   {reason}")
+        click.echo(f"  操作人:     {operator}")
+        click.secho(f"  回滚结果:   ❌ 失败", fg="red", bold=True)
+        click.secho(f"  失败原因:   {e}", fg="red")
+        click.secho(f"\n  ⚠️ 请立即人工介入排查！", fg="yellow")
         sys.exit(1)
 
 

@@ -270,18 +270,36 @@ class ReleasePipelineOrchestrator:
         if not pipeline:
             raise ValueError(f"未找到发布流水线: {release_id}")
 
+        event = None
         try:
             event = self.grayscale.manual_rollback(release_id, reason, operator)
-            pipeline.status = ReleaseStatus.ROLLBACK_COMPLETED
-            pipeline.current_step = "rollback_manual"
-            self._add_history(
-                pipeline, "MANUAL_ROLLBACK",
-                f"手动回滚触发: {reason}, 操作人: {operator}, "
-                f"结果: {'成功' if event and event.rollback_successful else '失败'}"
-            )
+            if event and event.rollback_successful:
+                pipeline.status = ReleaseStatus.ROLLBACK_COMPLETED
+                pipeline.current_step = "rollback_manual"
+                self._add_history(
+                    pipeline, "MANUAL_ROLLBACK",
+                    f"手动回滚触发: {reason}, 操作人: {operator}, 结果: 成功"
+                )
+            else:
+                pipeline.status = ReleaseStatus.RELEASE_FAILED
+                pipeline.current_step = "rollback_manual_failed"
+                fail_reason = (event.failure_reason if event and hasattr(event, 'failure_reason') and event.failure_reason
+                               else "回滚执行失败，需要人工介入")
+                pipeline.error_message = fail_reason
+                self._add_history(
+                    pipeline, "MANUAL_ROLLBACK_FAILED",
+                    f"手动回滚失败: {reason}, 操作人: {operator}, 原因: {fail_reason}"
+                )
+                raise RuntimeError(fail_reason)
         except Exception as e:
-            pipeline.error_message = f"手动回滚异常: {str(e)}"
-            self.logger.error(f"[{release_id}] 手动回滚异常: {e}", exc_info=True)
+            if "回滚执行失败" not in str(e):
+                pipeline.error_message = f"手动回滚异常: {str(e)}"
+                self.logger.error(f"[{release_id}] 手动回滚异常: {e}", exc_info=True)
+                self._add_history(pipeline, "MANUAL_ROLLBACK_ERROR",
+                                  f"手动回滚异常: {str(e)}")
+            pipeline.updated_at = get_cst_now_str()
+            self._save_pipeline(pipeline)
+            raise
 
         pipeline.updated_at = get_cst_now_str()
         self._save_pipeline(pipeline)
