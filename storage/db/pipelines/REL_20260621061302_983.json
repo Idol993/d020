@@ -1,0 +1,40 @@
+{
+  "release_id": "REL_20260621061302_983",
+  "request": {
+    "release_id": "REL_20260621061302_983",
+    "version": "v3.0.0",
+    "title": "测试发布-回滚验证",
+    "description": "",
+    "release_type": "regular",
+    "submitted_by": "admin@company.com",
+    "submitted_at": "2026-06-21 06:13:02",
+    "package_url": "",
+    "target_stations": [],
+    "changelog": "",
+    "hotfix_reason": "",
+    "rollback_version": "v2.9.0",
+    "additional_info": {}
+  },
+  "status": "rollback_completed",
+  "current_step": "rollback_manual",
+  "step_history": [
+    {
+      "timestamp": "2026-06-21 06:13:02",
+      "action": "SUBMIT",
+      "detail": "发布申请提交: 测试发布-回滚验证"
+    },
+    {
+      "timestamp": "2026-06-21 06:13:27",
+      "action": "RELEASE_START",
+      "detail": "灰度启动"
+    },
+    {
+      "timestamp": "2026-06-21 06:13:44",
+      "action": "MANUAL_ROLLBACK",
+      "detail": "手动回滚触发: 取件码生成异常, 操作人: admin@company.com, 结果: 成功"
+    }
+  ],
+  "created_at": "2026-06-21 06:13:02",
+  "updated_at": "2026-06-21 06:13:44",
+  "error_message": ""
+}

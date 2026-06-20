@@ -1,0 +1,78 @@
+{
+  "release_id": "REL_20260621061302_983",
+  "version": "v3.0.0",
+  "rollback_version": "v2.9.0",
+  "stages": [
+    {
+      "stage": 1,
+      "name": "偏远驿站",
+      "station_types": [],
+      "region_priority": [],
+      "scale_percent": 10,
+      "observation_minutes": 15,
+      "status": "completed",
+      "started_at": "",
+      "completed_at": "",
+      "affected_stations": [
+        "S401",
+        "S402"
+      ]
+    },
+    {
+      "stage": 2,
+      "name": "社区驿站",
+      "station_types": [],
+      "region_priority": [],
+      "scale_percent": 30,
+      "observation_minutes": 20,
+      "status": "in_progress",
+      "started_at": "",
+      "completed_at": "",
+      "affected_stations": [
+        "S403",
+        "S404",
+        "S405"
+      ]
+    }
+  ],
+  "stations": [],
+  "created_at": "2026-06-21 06:13:27",
+  "status": "rollback_completed",
+  "current_stage_index": 1,
+  "circuit_breaker_state": "open",
+  "active_monitoring": false,
+  "monitoring_started_at": "2026-06-21 06:13:27",
+  "events": [
+    {
+      "event_id": "CBE_20260621061341_620",
+      "release_id": "REL_20260621061302_983",
+      "version": "v3.0.0",
+      "trigger_stage": 2,
+      "trigger_metric": "manual_trigger",
+      "trigger_value": 0.0,
+      "threshold": 0.0,
+      "affected_stations": [
+        "S401",
+        "S402",
+        "S403",
+        "S404",
+        "S405"
+      ],
+      "triggered_at": "2026-06-21 06:13:41",
+      "rollback_started": "2026-06-21 06:13:41",
+      "rollback_completed": "2026-06-21 06:13:44",
+      "rollback_successful": true,
+      "rollback_duration_seconds": 2.92,
+      "report_generated": true
+    }
+  ],
+  "all_affected_stations": [
+    "S401",
+    "S402",
+    "S403",
+    "S404",
+    "S405"
+  ],
+  "completed_at": "",
+  "final_result": ""
+}

@@ -12,21 +12,70 @@ from typing import Optional
 
 import click
 
-from src.core.config import (
-    get_config, ReleaseRequest, ReleaseType, ReleaseStatus,
-)
-from src.core.logger import (
-    get_logger, get_cst_now_str, get_audit_logger, generate_id,
-)
-from src.orchestrator import (
-    get_orchestrator, ScheduledTaskManager,
-)
-from src.precheck.engine import get_precheck_engine
-from src.approval.engine import get_approval_engine
-from src.release.grayscale import get_grayscale_engine
-from src.reporting.drill import get_drill_manager
-from src.reporting.weekly_report import get_weekly_report_generator
-from src.reporting.audit_query import get_audit_query_engine
+
+def _lazy_orchestrator():
+    from src.orchestrator import get_orchestrator
+    return get_orchestrator()
+
+
+def _lazy_precheck():
+    from src.precheck.engine import get_precheck_engine
+    return get_precheck_engine()
+
+
+def _lazy_approval():
+    from src.approval.engine import get_approval_engine
+    return get_approval_engine()
+
+
+def _lazy_grayscale():
+    from src.release.grayscale import get_grayscale_engine
+    return get_grayscale_engine()
+
+
+def _lazy_drill():
+    from src.reporting.drill import get_drill_manager
+    return get_drill_manager()
+
+
+def _lazy_weekly():
+    from src.reporting.weekly_report import get_weekly_report_generator
+    return get_weekly_report_generator()
+
+
+def _lazy_audit_query():
+    from src.reporting.audit_query import get_audit_query_engine
+    return get_audit_query_engine()
+
+
+def _lazy_config():
+    from src.core.config import get_config
+    return get_config()
+
+
+def _lazy_audit_logger():
+    from src.core.logger import get_audit_logger
+    return get_audit_logger()
+
+
+def _lazy_models():
+    from src.core.config import ReleaseRequest, ReleaseType, ReleaseStatus
+    return ReleaseRequest, ReleaseType, ReleaseStatus
+
+
+def _lazy_logger():
+    from src.core.logger import get_logger
+    return get_logger("cli")
+
+
+def _lazy_cst_now():
+    from src.core.logger import get_cst_now_str
+    return get_cst_now_str()
+
+
+def _lazy_generate_id():
+    from src.core.logger import generate_id
+    return generate_id
 
 
 def _print_banner():
@@ -52,7 +101,7 @@ def _print_dict(data: dict, title: str = ""):
 
 
 def _progress_printer(stage: str, value: any):
-    click.secho(f"  → [{get_cst_now_str()}] {stage}: {value}", fg="bright_black")
+    click.secho(f"  → [{_lazy_cst_now()}] {stage}: {value}", fg="bright_black")
 
 
 @click.group()
@@ -67,8 +116,6 @@ def cli(ctx, config_path: Optional[str], verbose: bool):
         from src.core.config import ConfigManager
         ConfigManager(config_path)
     ctx.obj["verbose"] = verbose
-    ctx.obj["orchestrator"] = get_orchestrator()
-    ctx.obj["logger"] = get_logger("cli")
 
 
 @cli.command(short_help="提交发布申请")
@@ -92,7 +139,8 @@ def submit(ctx, version: str, title: str, description: str, release_type: str,
            hotfix_reason: str, changelog: str):
     """提交发布申请"""
     _print_banner()
-    orch = ctx.obj["orchestrator"]
+    orch = _lazy_orchestrator()
+    ReleaseRequest, ReleaseType, _ = _lazy_models()
 
     request = ReleaseRequest(
         release_id="",
@@ -123,14 +171,15 @@ def submit(ctx, version: str, title: str, description: str, release_type: str,
 @click.pass_context
 def precheck(ctx, release_id: str):
     """对已提交的发布申请执行多维度前置校验"""
-    orch = ctx.obj["orchestrator"]
+    orch = _lazy_orchestrator()
     click.secho(f"\n🔍 开始执行前置校验 [{release_id}]", fg="blue", bold=True)
 
     pipeline = orch.run_precheck(
         release_id, progress_cb=_progress_printer
     )
 
-    summary = get_precheck_engine().get_summary(release_id)
+    pe = _lazy_precheck()
+    summary = pe.get_summary(release_id)
     if summary:
         click.secho(f"\n{'─'*60}", fg="yellow")
         click.secho("  前置校验结果汇总", fg="yellow", bold=True)
@@ -177,10 +226,10 @@ def precheck(ctx, release_id: str):
 def approval(ctx, release_id: str, action: str, role: str, approver: str,
              comment: str, reason: str):
     """启动审批流程、审批、拒绝或查看审批状态"""
-    orch = ctx.obj["orchestrator"]
-    engine = get_approval_engine()
+    engine = _lazy_approval()
 
     if action == "start":
+        orch = _lazy_orchestrator()
         click.secho(f"\n📝 启动审批流程 [{release_id}]", fg="blue", bold=True)
         try:
             pipeline = orch.start_approval(release_id)
@@ -193,6 +242,7 @@ def approval(ctx, release_id: str, action: str, role: str, approver: str,
         if not role or not approver:
             click.secho("❌ 审批操作需要 --role 和 --approver 参数", fg="red")
             sys.exit(1)
+        orch = _lazy_orchestrator()
         click.secho(f"\n👍 审批通过 [{release_id}] 节点: {role}", fg="blue", bold=True)
         try:
             pipeline = orch.approve(release_id, approver, role, comment)
@@ -207,6 +257,7 @@ def approval(ctx, release_id: str, action: str, role: str, approver: str,
             sys.exit(1)
         if not reason:
             reason = click.prompt("请输入拒绝原因", type=str)
+        orch = _lazy_orchestrator()
         click.secho(f"\n👎 审批拒绝 [{release_id}] 节点: {role}", fg="red", bold=True)
         try:
             pipeline = orch.reject(release_id, approver, role, reason)
@@ -249,7 +300,8 @@ def approval(ctx, release_id: str, action: str, role: str, approver: str,
 @click.pass_context
 def release(ctx, release_id: str, blocking: bool, timeout: int):
     """执行区域灰度发布（审批通过后）"""
-    orch = ctx.obj["orchestrator"]
+    orch = _lazy_orchestrator()
+    gs = _lazy_grayscale()
     click.secho(f"\n🚀 启动灰度发布 [{release_id}]", fg="blue", bold=True)
 
     try:
@@ -261,7 +313,7 @@ def release(ctx, release_id: str, blocking: bool, timeout: int):
         click.secho(f"❌ 发布启动失败: {e}", fg="red")
         sys.exit(1)
 
-    session = get_grayscale_engine().get_session(release_id)
+    session = gs.get_session(release_id)
     if not session:
         click.secho("⚠️ 未获取到发布会话信息", fg="yellow")
         return
@@ -299,8 +351,8 @@ def release(ctx, release_id: str, blocking: bool, timeout: int):
 @click.pass_context
 def status(ctx, release_id: str):
     """查看发布会话的详细状态与进度"""
-    orch = ctx.obj["orchestrator"]
-    gs = get_grayscale_engine()
+    orch = _lazy_orchestrator()
+    gs = _lazy_grayscale()
     session = gs.get_session(release_id)
     pipeline = orch.get_pipeline_status(release_id)
 
@@ -358,7 +410,8 @@ def status(ctx, release_id: str):
 @click.pass_context
 def rollback(ctx, release_id: str, reason: str, operator: str):
     """对正在进行的发布执行手动回滚操作"""
-    orch = ctx.obj["orchestrator"]
+    orch = _lazy_orchestrator()
+    gs = _lazy_grayscale()
     click.secho(f"\n🔄 手动触发回滚 [{release_id}]", fg="red", bold=True)
     click.echo(f"  原因: {reason}")
     click.echo(f"  操作人: {operator}")
@@ -369,7 +422,7 @@ def rollback(ctx, release_id: str, reason: str, operator: str):
 
     try:
         pipeline = orch.manual_rollback(release_id, reason, operator)
-        session = get_grayscale_engine().get_session(release_id)
+        session = gs.get_session(release_id)
         metric_map = {
             "pickup_failure_rate": "取件失败率",
             "terminal_offline_rate": "柜机离线率",
@@ -419,7 +472,7 @@ def rollback(ctx, release_id: str, reason: str, operator: str):
 @click.pass_context
 def drill(ctx):
     """立即执行一次回滚演练（验证熔断与回滚机制）"""
-    dm = get_drill_manager()
+    dm = _lazy_drill()
     click.secho(f"\n🎯 执行回滚演练", fg="blue", bold=True)
 
     if not click.confirm("确认立即执行演练？演练不会影响真实业务。"):
@@ -463,7 +516,7 @@ def drill(ctx):
 @click.pass_context
 def report(ctx, week_start: Optional[str], week_end: Optional[str]):
     """生成并发送每周发布运营报告"""
-    wr = get_weekly_report_generator()
+    wr = _lazy_weekly()
     click.secho(f"\n📊 生成每周运营报告", fg="blue", bold=True)
 
     report = wr.generate(week_start, week_end)
@@ -490,7 +543,8 @@ def report(ctx, week_start: Optional[str], week_end: Optional[str]):
         for name, path in report.charts.items():
             click.echo(f"    • {name}: {path}")
 
-    excel_path = get_config().get_storage_path("report_dir") / f"{report.report_id}.xlsx"
+    cfg = _lazy_config()
+    excel_path = cfg.get_storage_path("report_dir") / f"{report.report_id}.xlsx"
     click.secho(f"\n  📄 Excel报告: {excel_path if excel_path.exists() else '未生成'}",
                 fg="yellow")
 
@@ -516,7 +570,7 @@ def list_records(ctx, record_type: str, start_time: Optional[str],
                  station: Optional[str], release_id: Optional[str],
                  output_format: str, output: Optional[str]):
     """查询发布、回滚、演练、审批、审计历史记录"""
-    aq = get_audit_query_engine()
+    aq = _lazy_audit_query()
 
     if record_type == "release":
         records = aq.query_release_records(
@@ -533,7 +587,7 @@ def list_records(ctx, record_type: str, start_time: Optional[str],
             start_time, end_time, release_id
         )
     else:
-        alog = get_audit_logger()
+        alog = _lazy_audit_logger()
         records = alog.query_logs(start_time, end_time)
 
     if not records:
@@ -646,7 +700,8 @@ def list_records(ctx, record_type: str, start_time: Optional[str],
 def serve(ctx, run_demo: bool):
     """启动平台常驻服务，执行定时演练、定时周报等任务"""
     _print_banner()
-    orch = ctx.obj["orchestrator"]
+    orch = _lazy_orchestrator()
+    from src.orchestrator import ScheduledTaskManager
     scheduler = ScheduledTaskManager(orch)
 
     click.secho("启动平台后台常驻服务...", fg="green")
@@ -670,7 +725,8 @@ def serve(ctx, run_demo: bool):
 def _run_demo_flow(ctx):
     try:
         click.echo("\n🎬 === 开始完整流程演示 ===")
-        orch = ctx.obj["orchestrator"]
+        orch = _lazy_orchestrator()
+        ReleaseRequest, ReleaseType, _ = _lazy_models()
 
         demo_release = ReleaseRequest(
             release_id="",
@@ -719,7 +775,10 @@ def demo(ctx, mode: str):
     """完整演示发布流程：提交→校验→审批→灰度→监控"""
     _print_banner()
     click.secho(f"\n🎬 演示模式: {mode}", fg="cyan", bold=True)
-    orch = ctx.obj["orchestrator"]
+    orch = _lazy_orchestrator()
+    ReleaseRequest, ReleaseType, _ = _lazy_models()
+    gs = _lazy_grayscale()
+    pe = _lazy_precheck()
 
     versions = {
         "normal": ("v2.8.0", "v2.7.5"),
@@ -755,7 +814,7 @@ def demo(ctx, mode: str):
 
     click.secho(f"\n[Step 2/5] 🔍 执行多维前置校验", fg="blue", bold=True)
     orch.run_precheck(rid, progress_cb=lambda a, b: click.echo(f"  → {a}: {int(b*100)}%"))
-    summary = get_precheck_engine().get_summary(rid)
+    summary = pe.get_summary(rid)
     if summary and not summary.overall_passed:
         click.secho(f"\n🚫 前置校验阻断，演示结束（符合预期：{mode}模式）",
                     fg="red", bold=True)
@@ -777,7 +836,7 @@ def demo(ctx, mode: str):
 
     click.secho(f"\n[Step 4/5] 🚀 区域灰度发布启动", fg="blue", bold=True)
     orch.start_release(rid, blocking=False)
-    session = get_grayscale_engine().get_session(rid)
+    session = gs.get_session(rid)
     if session:
         for stage in session.stages:
             click.echo(f"  → 阶段{stage.stage}: {stage.name} ({stage.scale_percent}%, 观察{stage.observation_minutes}分)")
@@ -787,7 +846,7 @@ def demo(ctx, mode: str):
 
     for i in range(6):
         time.sleep(3)
-        session = get_grayscale_engine().get_session(rid)
+        session = gs.get_session(rid)
         if not session:
             break
         status_text = f"阶段{session.current_stage_index+1}/{len(session.stages)}"
@@ -798,7 +857,7 @@ def demo(ctx, mode: str):
         else:
             click.echo(f"  ⏱️  [{i*5}s] 状态: {status_text} | 熔断: 正常")
 
-    get_grayscale_engine().stop(rid)
+    gs.stop(rid)
     time.sleep(1)
 
     final = orch.get_pipeline_status(rid)
